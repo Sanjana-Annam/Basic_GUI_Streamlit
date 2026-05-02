@@ -1,0 +1,682 @@
+"""
+GNSS Data Processing Panel
+==========================
+A professional, production-style Streamlit application for GNSS data processing.
+This is a scalable prototype designed to simulate a real GNSS data analysis pipeline.
+It can be extended to support actual RINEX/NMEA parsing, orbit computation,
+position estimation, and multi-station network analysis.
+
+Run with:
+    streamlit run gnss_app.py
+"""
+
+import streamlit as st
+import time
+import datetime
+import random
+
+# ─────────────────────────────────────────────
+# PAGE CONFIGURATION
+# ─────────────────────────────────────────────
+st.set_page_config(
+    page_title="GNSS Processing Panel",
+    page_icon="🛰️",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+
+# ─────────────────────────────────────────────
+# GLOBAL STYLES
+# ─────────────────────────────────────────────
+st.markdown("""
+<style>
+  /* Import fonts */
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+  /* Root variables */
+  :root {
+    --bg-primary: #0b0f1a;
+    --bg-card: #111827;
+    --bg-input: #1a2235;
+    --accent: #00d4ff;
+    --accent-dim: #0099bb;
+    --success: #00e5a0;
+    --warning: #ffb800;
+    --error: #ff4d6d;
+    --text-primary: #e8edf5;
+    --text-muted: #6b7a99;
+    --border: rgba(0, 212, 255, 0.15);
+    --mono: 'Space Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  /* Global overrides */
+  html, body, [class*="css"] {
+    font-family: var(--sans);
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+  }
+
+  .stApp {
+    background: linear-gradient(135deg, #0b0f1a 0%, #0f1729 50%, #0b0f1a 100%);
+  }
+
+  /* Hide default streamlit elements */
+  #MainMenu, footer, header { visibility: hidden; }
+
+  /* ─── HEADER ─── */
+  .gnss-header {
+    background: linear-gradient(90deg, rgba(0,212,255,0.08) 0%, rgba(0,229,160,0.04) 100%);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px 36px;
+    margin-bottom: 28px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .gnss-header::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  }
+  .gnss-header-icon { font-size: 48px; line-height: 1; }
+  .gnss-header-title {
+    font-family: var(--mono);
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: -0.5px;
+    margin: 0;
+  }
+  .gnss-header-sub {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    font-weight: 300;
+  }
+  .gnss-header-badge {
+    margin-left: auto;
+    background: rgba(0,229,160,0.1);
+    border: 1px solid rgba(0,229,160,0.3);
+    color: var(--success);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 12px;
+    border-radius: 20px;
+  }
+
+  /* ─── SECTION CARDS ─── */
+  .section-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .section-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ─── FILE METADATA ─── */
+  .file-meta {
+    background: rgba(0,212,255,0.05);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-top: 12px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .file-meta span { color: var(--accent); }
+
+  /* ─── CONSOLE / LOG OUTPUT ─── */
+  .console-wrap {
+    background: #070b13;
+    border: 1px solid rgba(0,212,255,0.2);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .console-bar {
+    background: #0d1525;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid rgba(0,212,255,0.1);
+  }
+  .console-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+  }
+  .console-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-left: 6px;
+    letter-spacing: 1px;
+  }
+  .console-body {
+    padding: 20px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.9;
+    color: #8899bb;
+    white-space: pre-wrap;
+    max-height: 420px;
+    overflow-y: auto;
+  }
+  .log-ts    { color: #3a4f70; }
+  .log-ok    { color: var(--success); }
+  .log-info  { color: var(--accent); }
+  .log-warn  { color: var(--warning); }
+  .log-done  { color: #a78bfa; }
+  .log-sep   { color: #1e2d45; }
+
+  /* ─── STATUS CHIP ─── */
+  .status-chip {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 4px;
+    margin-top: 6px;
+  }
+  .chip-success { background: rgba(0,229,160,0.1); border: 1px solid rgba(0,229,160,0.4); color: var(--success); }
+  .chip-error   { background: rgba(255,77,109,0.1); border: 1px solid rgba(255,77,109,0.4); color: var(--error); }
+
+  /* ─── STREAMLIT WIDGET OVERRIDES ─── */
+  div[data-testid="stFileUploader"] {
+    background: var(--bg-input) !important;
+    border: 1px dashed rgba(0,212,255,0.3) !important;
+    border-radius: 8px !important;
+  }
+  .stTextInput > div > div > input {
+    background: var(--bg-input) !important;
+    border: 1px solid rgba(0,212,255,0.2) !important;
+    color: var(--text-primary) !important;
+    border-radius: 8px !important;
+    font-family: var(--mono) !important;
+    font-size: 13px !important;
+  }
+  .stTextInput > div > div > input:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 2px rgba(0,212,255,0.15) !important;
+  }
+  div[data-testid="stDateInput"] input {
+    background: var(--bg-input) !important;
+    border: 1px solid rgba(0,212,255,0.2) !important;
+    color: var(--text-primary) !important;
+    border-radius: 8px !important;
+    font-family: var(--mono) !important;
+  }
+  .stButton > button {
+    background: linear-gradient(135deg, #0099bb 0%, #00d4ff 100%) !important;
+    color: #050a14 !important;
+    font-family: var(--mono) !important;
+    font-weight: 700 !important;
+    font-size: 13px !important;
+    letter-spacing: 1.5px !important;
+    border: none !important;
+    border-radius: 8px !important;
+    padding: 14px 40px !important;
+    width: 100% !important;
+    transition: all 0.2s ease !important;
+    text-transform: uppercase !important;
+  }
+  .stButton > button:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 6px 24px rgba(0,212,255,0.35) !important;
+  }
+  div[data-testid="stProgressBar"] > div > div {
+    background: linear-gradient(90deg, var(--accent-dim), var(--accent), var(--success)) !important;
+    border-radius: 4px !important;
+  }
+  div[data-testid="stProgressBar"] > div {
+    background: rgba(255,255,255,0.06) !important;
+    border-radius: 4px !important;
+  }
+  .stAlert { border-radius: 8px !important; font-family: var(--sans) !important; }
+
+  /* ─── DESCRIPTION BOX ─── */
+  .description-box {
+    background: linear-gradient(135deg, rgba(0,212,255,0.05), rgba(0,229,160,0.03));
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 18px 22px;
+    font-size: 13.5px;
+    color: var(--text-muted);
+    line-height: 1.8;
+    margin-bottom: 28px;
+  }
+  .description-box b { color: var(--text-primary); }
+
+  /* ─── METRICS ROW ─── */
+  .metrics-row {
+    display: flex;
+    gap: 14px;
+    margin-top: 16px;
+  }
+  .metric-chip {
+    flex: 1;
+    background: rgba(0,212,255,0.05);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    text-align: center;
+  }
+  .metric-val {
+    font-family: var(--mono);
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+  .metric-lbl {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+</style>
+""", unsafe_allow_html=True)
+
+
+# ─────────────────────────────────────────────
+# HELPER / LOGIC FUNCTIONS
+# ─────────────────────────────────────────────
+
+def validate_inputs(uploaded_file, station_name: str, obs_date: datetime.date) -> list[str]:
+    """
+    Validate all user inputs before processing begins.
+    Returns a list of error strings; empty list means all inputs are valid.
+    """
+    errors = []
+
+    if uploaded_file is None:
+        errors.append("No data file uploaded. Please select a GNSS observation file.")
+
+    if not station_name or station_name.strip() == "":
+        errors.append("Station name is required. Please enter a valid GNSS station identifier.")
+
+    if obs_date > datetime.date.today():
+        errors.append(f"Observation date ({obs_date}) is in the future. Please select a valid past or present date.")
+
+    return errors
+
+
+def format_file_size(size_bytes: int) -> str:
+    """Human-readable file size string."""
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024 ** 2:
+        return f"{size_bytes / 1024:.1f} KB"
+    else:
+        return f"{size_bytes / 1024 ** 2:.2f} MB"
+
+
+def get_file_extension(filename: str) -> str:
+    """Extract and return the uppercase file extension."""
+    parts = filename.rsplit(".", 1)
+    return parts[-1].upper() if len(parts) > 1 else "UNKNOWN"
+
+
+def build_log_html(lines: list[tuple]) -> str:
+    """
+    Build styled HTML for the output console.
+    Each tuple: (tag_class, timestamp_str, message_str)
+    """
+    html_lines = []
+    for css_class, ts, msg in lines:
+        html_lines.append(
+            f'<div>'
+            f'<span class="log-ts">[{ts}]</span> '
+            f'<span class="{css_class}">{msg}</span>'
+            f'</div>'
+        )
+    return "\n".join(html_lines)
+
+
+def simulate_processing_pipeline(
+    uploaded_file,
+    station_name: str,
+    obs_date: datetime.date,
+    progress_bar,
+    status_text,
+) -> list[tuple]:
+    """
+    Simulate a multi-step GNSS data processing pipeline with realistic delays.
+    Updates the Streamlit progress bar and status text at each stage.
+    Returns a list of log entries for the output console.
+    """
+
+    def ts() -> str:
+        """Current timestamp string."""
+        return datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+
+    logs = []
+    total_steps = 10
+
+    def advance(step: int, label: str):
+        """Update progress bar and status message."""
+        progress_bar.progress(int((step / total_steps) * 100))
+        status_text.markdown(
+            f'<p style="font-family:\'Space Mono\',monospace; font-size:12px; '
+            f'color:#6b7a99; margin:0;">⟳ &nbsp;{label}</p>',
+            unsafe_allow_html=True,
+        )
+
+    # ── Step 1: Load file ──
+    advance(1, "Loading observation file…")
+    time.sleep(0.6)
+    file_size = format_file_size(uploaded_file.size)
+    logs.append(("log-sep", ts(), "─" * 58))
+    logs.append(("log-info", ts(), f"GNSS PROCESSING PIPELINE  v2.4.1"))
+    logs.append(("log-sep", ts(), "─" * 58))
+    logs.append(("log-ok",   ts(), f"[FILE LOADED]       {uploaded_file.name}  ({file_size})"))
+    logs.append(("log-info", ts(), f"[STATION]           {station_name.upper()}"))
+    logs.append(("log-info", ts(), f"[OBS DATE]          {obs_date.strftime('%d %b %Y')}"))
+
+    # ── Step 2: Input validation ──
+    advance(2, "Validating inputs…")
+    time.sleep(0.4)
+    logs.append(("log-ok",   ts(), "[VALIDATE]          All inputs verified — OK"))
+
+    # ── Step 3: Header parsing ──
+    advance(3, "Parsing file header…")
+    time.sleep(0.5)
+    fake_version  = random.choice(["3.03", "3.04", "2.11"])
+    fake_receiver = random.choice(["TRIMBLE NETR9", "LEICA GR50", "JAVAD TRE-G3T", "SEPTENTRIO POLARX5"])
+    fake_ant      = random.choice(["TRM59900.00", "LEIAR25.R4", "JAV_RINGANT_G3T"])
+    logs.append(("log-ok",   ts(), f"[HEADER PARSED]     RINEX v{fake_version} | Rcvr: {fake_receiver}"))
+    logs.append(("log-ok",   ts(), f"[ANTENNA]           {fake_ant}"))
+
+    # ── Step 4: Satellite detection ──
+    advance(4, "Detecting visible satellites…")
+    time.sleep(0.7)
+    gps_sats  = random.randint(8, 12)
+    glo_sats  = random.randint(5, 9)
+    gal_sats  = random.randint(6, 10)
+    bds_sats  = random.randint(4, 8)
+    total_sats = gps_sats + glo_sats + gal_sats + bds_sats
+    logs.append(("log-ok",   ts(), f"[SATELLITES]        Total: {total_sats}  |  GPS:{gps_sats}  GLO:{glo_sats}  GAL:{gal_sats}  BDS:{bds_sats}"))
+
+    # ── Step 5: Preprocessing ──
+    advance(5, "Applying observation corrections…")
+    time.sleep(0.8)
+    logs.append(("log-info", ts(), "[PREPROCESS]        Cycle slip detection … DONE"))
+    logs.append(("log-info", ts(), "[PREPROCESS]        Multipath mitigation … DONE"))
+    logs.append(("log-info", ts(), "[PREPROCESS]        Tropospheric model (VMF3) applied"))
+    logs.append(("log-info", ts(), "[PREPROCESS]        Ionospheric delay estimated (IONEX)"))
+
+    # ── Step 6: Orbit & clock data ──
+    advance(6, "Loading precise orbit & clock products…")
+    time.sleep(0.7)
+    eph_source = random.choice(["IGS Final", "IGS Rapid", "CODE Final", "JPL Final"])
+    logs.append(("log-ok",   ts(), f"[ORBITS/CLK]        Source: {eph_source}  — interpolated OK"))
+
+    # ── Step 7: Position estimation ──
+    advance(7, "Running position estimation (PPP)…")
+    time.sleep(1.1)
+    lat  = round(random.uniform(18.0, 28.0), 6)
+    lon  = round(random.uniform(73.0, 85.0), 6)
+    alt  = round(random.uniform(450.0, 800.0), 3)
+    pdop = round(random.uniform(1.2, 2.8), 2)
+    logs.append(("log-ok",   ts(), f"[POSITION PPP]      Lat: {lat}°N   Lon: {lon}°E   Alt: {alt} m"))
+    logs.append(("log-ok",   ts(), f"[GEOMETRY]          PDOP: {pdop}  |  HDOP: {round(pdop*0.7, 2)}  |  VDOP: {round(pdop*0.9, 2)}"))
+
+    # ── Step 8: Quality control ──
+    advance(8, "Running quality control checks…")
+    time.sleep(0.6)
+    obs_count   = random.randint(8400, 14400)
+    reject_pct  = round(random.uniform(0.5, 3.5), 1)
+    rms_h       = round(random.uniform(2.1, 9.8), 1)
+    rms_v       = round(random.uniform(4.2, 14.5), 1)
+    logs.append(("log-ok",   ts(), f"[QC]                Observations: {obs_count:,}  |  Rejected: {reject_pct}%"))
+    logs.append(("log-ok",   ts(), f"[ACCURACY]          RMS H: {rms_h} mm  |  RMS V: {rms_v} mm"))
+
+    # ── Step 9: Export ──
+    advance(9, "Generating output reports…")
+    time.sleep(0.5)
+    logs.append(("log-info", ts(), f"[EXPORT]            Summary report … OK"))
+    logs.append(("log-info", ts(), f"[EXPORT]            Time-series coordinates … OK"))
+    logs.append(("log-info", ts(), f"[EXPORT]            Residuals plot … OK"))
+
+    # ── Step 10: Done ──
+    advance(10, "Processing complete.")
+    time.sleep(0.3)
+    logs.append(("log-sep",  ts(), "─" * 58))
+    elapsed = round(random.uniform(4.8, 7.2), 2)
+    logs.append(("log-done", ts(), f"[COMPLETE]          Processing finished in {elapsed}s — status: SUCCESS"))
+    logs.append(("log-sep",  ts(), "─" * 58))
+
+    return logs
+
+
+# ─────────────────────────────────────────────
+# UI: HEADER
+# ─────────────────────────────────────────────
+st.markdown("""
+<div class="gnss-header">
+  <div class="gnss-header-icon">🛰️</div>
+  <div>
+    <p class="gnss-header-title">GNSS Data Processing Panel</p>
+    <p class="gnss-header-sub">Precise Point Positioning  ·  Multi-Constellation  ·  Research-Grade Pipeline</p>
+  </div>
+  <div class="gnss-header-badge">● PROTOTYPE v2.4.1</div>
+</div>
+""", unsafe_allow_html=True)
+
+# ─────────────────────────────────────────────
+# UI: DESCRIPTION
+# ─────────────────────────────────────────────
+st.markdown("""
+<div class="description-box">
+  <b>About this tool:</b> This panel is a scalable prototype of a production GNSS data processing system.
+  It simulates a full Precise Point Positioning (PPP) pipeline — from raw observation ingestion to
+  quality-controlled coordinate estimation. It is designed to be extended with real RINEX parsers,
+  IGS product fetchers, and time-series analysis modules for geodetic research and monitoring applications.
+</div>
+""", unsafe_allow_html=True)
+
+# ─────────────────────────────────────────────
+# UI: LAYOUT — two-column
+# ─────────────────────────────────────────────
+left_col, right_col = st.columns([1, 1.6], gap="large")
+
+with left_col:
+    # ── INPUT SECTION ──
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">01 &nbsp; Input Parameters</div>', unsafe_allow_html=True)
+
+    uploaded_file = st.file_uploader(
+        "Observation File",
+        type=["rnx", "obs", "txt", "csv", "dat", "24o", "23o", "22o"],
+        help="Supported formats: RINEX 2/3, CSV, or raw observation data.",
+        label_visibility="visible",
+    )
+
+    # File metadata display
+    if uploaded_file is not None:
+        ext  = get_file_extension(uploaded_file.name)
+        size = format_file_size(uploaded_file.size)
+        st.markdown(f"""
+        <div class="file-meta">
+          📄 &nbsp;<span>{uploaded_file.name}</span><br>
+          Format: <span>{ext}</span> &nbsp;·&nbsp; Size: <span>{size}</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    station_name = st.text_input(
+        "GNSS Station Name",
+        placeholder="e.g. PUNE, IISC, DELH",
+        max_chars=9,
+        help="4-character GNSS station code (IGS convention preferred).",
+    )
+
+    obs_date = st.date_input(
+        "Observation Date",
+        value=datetime.date.today(),
+        min_value=datetime.date(1993, 1, 1),
+        max_value=datetime.date.today() + datetime.timedelta(days=1),
+        help="Date of the GNSS observation session.",
+    )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    run_clicked = st.button("▶  RUN PROCESSING PIPELINE")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+with right_col:
+    # ── PROCESSING + OUTPUT SECTION ──
+    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">02 &nbsp; Processing & Output Console</div>', unsafe_allow_html=True)
+
+    output_placeholder = st.empty()
+
+    # Default idle state
+    output_placeholder.markdown("""
+    <div class="console-wrap">
+      <div class="console-bar">
+        <div class="console-dot" style="background:#ff5f57"></div>
+        <div class="console-dot" style="background:#febc2e"></div>
+        <div class="console-dot" style="background:#28c840"></div>
+        <span class="console-label">PIPELINE OUTPUT — IDLE</span>
+      </div>
+      <div class="console-body" style="color:#2a3a55; text-align:center; padding-top:60px;">
+        No processing session active.<br>
+        Configure inputs and click RUN.
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+# ─────────────────────────────────────────────
+# PROCESSING LOGIC (triggered on button click)
+# ─────────────────────────────────────────────
+if run_clicked:
+    errors = validate_inputs(uploaded_file, station_name, obs_date)
+
+    if errors:
+        # ── VALIDATION FAILED ──
+        with right_col:
+            output_placeholder.markdown("""
+            <div class="console-wrap">
+              <div class="console-bar">
+                <div class="console-dot" style="background:#ff5f57"></div>
+                <div class="console-dot" style="background:#febc2e"></div>
+                <div class="console-dot" style="background:#28c840"></div>
+                <span class="console-label">PIPELINE OUTPUT — VALIDATION FAILED</span>
+              </div>
+              <div class="console-body">
+            """ + "\n".join(
+                f'<div><span class="log-ts">[--:--:---]</span> '
+                f'<span class="log-warn">⚠  {e}</span></div>'
+                for e in errors
+            ) + """
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        for err in errors:
+            st.error(f"⚠  {err}")
+
+    else:
+        # ── VALID — START PIPELINE ──
+        with right_col:
+            output_placeholder.empty()
+
+        # Progress bar + status inside left column (below the button)
+        with left_col:
+            st.markdown("<br>", unsafe_allow_html=True)
+            prog_label   = st.empty()
+            prog_label.markdown(
+                '<p style="font-family:\'Space Mono\',monospace; font-size:11px; '
+                'color:#00d4ff; letter-spacing:1px; margin-bottom:6px;">PIPELINE PROGRESS</p>',
+                unsafe_allow_html=True,
+            )
+            progress_bar = st.progress(0)
+            status_text  = st.empty()
+
+        # Run the simulated pipeline
+        log_entries = simulate_processing_pipeline(
+            uploaded_file,
+            station_name,
+            obs_date,
+            progress_bar,
+            status_text,
+        )
+
+        # Build and render final console output
+        log_html = build_log_html(log_entries)
+        with right_col:
+            output_placeholder.markdown(f"""
+            <div class="console-wrap">
+              <div class="console-bar">
+                <div class="console-dot" style="background:#ff5f57"></div>
+                <div class="console-dot" style="background:#febc2e"></div>
+                <div class="console-dot" style="background:#28c840"></div>
+                <span class="console-label">PIPELINE OUTPUT — SESSION COMPLETE</span>
+              </div>
+              <div class="console-body">{log_html}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # Update status
+        with left_col:
+            status_text.markdown(
+                '<p style="font-family:\'Space Mono\',monospace; font-size:12px; '
+                'color:#00e5a0; margin:0;">✓ &nbsp;Pipeline completed successfully</p>',
+                unsafe_allow_html=True,
+            )
+            progress_bar.progress(100)
+
+        # ── RESULT METRICS ──
+        with right_col:
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown('<div class="section-card">', unsafe_allow_html=True)
+            st.markdown('<div class="section-title">03 &nbsp; Session Summary</div>', unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class="metrics-row">
+              <div class="metric-chip">
+                <div class="metric-val">✓</div>
+                <div class="metric-lbl">Status</div>
+              </div>
+              <div class="metric-chip">
+                <div class="metric-val">{station_name.upper()[:4]}</div>
+                <div class="metric-lbl">Station</div>
+              </div>
+              <div class="metric-chip">
+                <div class="metric-val">{obs_date.strftime("%d %b")}</div>
+                <div class="metric-lbl">Obs Date</div>
+              </div>
+              <div class="metric-chip">
+                <div class="metric-val">PPP</div>
+                <div class="metric-lbl">Method</div>
+              </div>
+            </div>
+            """, unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
